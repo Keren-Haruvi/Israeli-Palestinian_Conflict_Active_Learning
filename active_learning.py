@@ -146,6 +146,73 @@ class ActiveLearningPipeline:
         self.available_pool_indices = np.setdiff1d(self.available_pool_indices, sampled_indices)
         return np.array(sampled_indices)
     
+    def _uncertainty_sampling(self):
+        """
+        selects a subset of indices from the available pool using uncertainty sampling
+        """
+        n_select = min(self.budget_per_iter, len(self.available_pool_indices))
+        available_pool_features = self.feature_vectors[self.available_pool_indices]
+        probabilities = self.model.predict_proba(available_pool_features)
+        # calculate uncertainty (entropy)
+        uncertainties = entropy(probabilities.T)
+        # select samples with highest uncertainty
+        sampled_locations = np.argsort(uncertainties)[-n_select:]
+        selected_indices = self.available_pool_indices[sampled_locations]
+        self.available_pool_indices = np.setdiff1d(self.available_pool_indices, selected_indices)
+        return selected_indices
+    
+    def _diversity_sampling(self):
+        """
+        selects a subset of indices from the available pool using diversity sampling
+        """
+        def top_k(arr, k):
+            return np.argpartition(arr, -k)[-k:]
+        n_select = min(self.budget_per_iter, len(self.available_pool_indices))
+        distances = pairwise_distances(self.feature_vectors[self.available_pool_indices], self.feature_vectors[self.train_indices])
+        min_distances = distances.min(axis=1)
+        top_indices = top_k(min_distances, min(n_select, len(self.available_pool_indices)))     
+        selected_indices = self.available_pool_indices[top_indices]
+        self.available_pool_indices = np.setdiff1d(self.available_pool_indices, selected_indices)
+        return selected_indices
+    
+    
+    def query_by_committee(self):
+        """
+        employs multiple models (Logistic Regression, SVM, and Random Forest) to predict labels for samples in the available pool. 
+        the selected indices are those with the highest disagreement among the models, indicating uncertainty about their labels.
+        """
+        n_select = min(self.budget_per_iter, len(self.available_pool_indices))
+        available_pool_features = self.feature_vectors[self.available_pool_indices]
+        train_features = self.feature_vectors[self.train_indices]
+        train_labels = self.labels[self.train_indices]
+        
+        # fit each model to the training data and get predictions on the available pool features
+        lr_model = LogisticRegression()
+        svm_model = SVC(probability=True)
+        rf_model = RandomForestClassifier(random_state=self.seed)
+
+        lr_model.fit(train_features, train_labels)
+        svm_model.fit(train_features, train_labels)
+        rf_model.fit(train_features, train_labels)
+
+        lr_predict = lr_model.predict(available_pool_features)
+        svm_predict = svm_model.predict(available_pool_features)
+        rf_predict = rf_model.predict(available_pool_features)
+        
+        # select the top indices with the highest disagreement
+        committee_predictions = np.stack([lr_predict, svm_predict, rf_predict], axis=1)
+        disagreement_scores = np.apply_along_axis(
+            lambda x: len(np.unique(x)), 1, committee_predictions
+        )
+        sorted_indices = np.argsort(-disagreement_scores)
+        selected_indices = sorted_indices[:n_select]
+        selected_pool_indices = self.available_pool_indices[selected_indices]
+
+        selected_pool_indices = np.intersect1d(self.available_pool_indices, selected_pool_indices)
+        self.available_pool_indices = np.setdiff1d(self.available_pool_indices, selected_pool_indices)
+        
+        return selected_pool_indices
+
 
     def _evaluate_model(self, trained_model):
         """
@@ -294,4 +361,52 @@ def run_pipeline(path, features, criteria, models, seeds, init_train_method='ran
 
 
 if __name__ == "__main__":
-    
+    path = '/home/student/Project/Datasets/processed_df.csv'
+    features = ['tfidf', 'bert', 'roberta', 'deberta']
+    criteria = ['random', 'uncertainty', 'diversity', 'query_by_commitee', 'longest', 'shortest', 'sentiment', 'unbalanced', 'cluster_uncertainty', 'cluster_disagreement', 'mistake']       
+    models = ['RandomForestClassifier', 'LogisticRegression', 'SVC']
+    seeds = [1,2,3,4,5]
+
+    accuracy_scores_dict = run_pipeline(path, features, criteria, models, seeds, init_train_method='kmeans')
+
+    # Plot Different Choices of Train Indeces
+    plot_init_train_indeces = False
+    if plot_init_train_indeces:
+        random_accuracy_scores_dict = run_pipeline(path, features, criteria, models, seeds=seeds, init_train_method='random') 
+        kmeans_accuracy_scores_dict = run_pipeline(path, features, criteria, models, seeds=seeds, init_train_method='kmeans') 
+
+        inital_accuracy_dict = {}
+        inital_accuracy_dict['random'] = random_accuracy_scores_dict[features[0]][models[0]]
+        inital_accuracy_dict['kmeans'] = kmeans_accuracy_scores_dict[features[0]][models[0]]
+        
+        plot_models_results(inital_accuracy_dict, init_train_method='', feature=features[0], model=models[0], is_comb=True)
+
+    # Plot Different Augmentations Methods
+    plot_augmentation_indeces = False
+    if plot_augmentation_indeces:
+        without_augmentation_accuracy_scores_dict = run_pipeline(path, features, criteria, models, seeds=seeds, init_train_method='kmeans') 
+        dropout_augmentation_accuracy_scores_dict = run_pipeline(path, features, criteria, models, seeds=seeds, init_train_method='kmeans', use_dropout_aug=True) 
+        shorter_augmentation_accuracy_scores_dict = run_pipeline(path, features, criteria, models, seeds=seeds, init_train_method='kmeans', use_shorter_aug=True) 
+        rephrase_augmentation_accuracy_scores_dict = run_pipeline(path, features, criteria, models, seeds=seeds, init_train_method='kmeans', use_rephrase_aug=True) 
+        all_augmentation_accuracy_scores_dict = run_pipeline(path, features, criteria, models, seeds=seeds, init_train_method='kmeans', use_dropout_aug=True, use_shorter_aug=True, use_rephrase_aug=True) 
+
+        augmentation_accuracy_dict = {}
+        augmentation_accuracy_dict['without'] = without_augmentation_accuracy_scores_dict[features[0]][models[0]][criteria[0]]
+        augmentation_accuracy_dict['dropout'] = dropout_augmentation_accuracy_scores_dict[features[0]][models[0]][criteria[0]]
+        augmentation_accuracy_dict['shorter'] = shorter_augmentation_accuracy_scores_dict[features[0]][models[0]][criteria[0]]
+        augmentation_accuracy_dict['rephrase'] = rephrase_augmentation_accuracy_scores_dict[features[0]][models[0]][criteria[0]]
+        augmentation_accuracy_dict['all'] = all_augmentation_accuracy_scores_dict[features[0]][models[0]][criteria[0]]
+        
+        plot_models_results(augmentation_accuracy_dict, init_train_method='', feature=features[0], model=models[0])
+        
+    # Plot all Random VS the best
+    plot_comparison = False
+    if plot_comparison:
+        random_dict = run_pipeline(path, features, ['random'], models, seeds=seeds, init_train_method='random') 
+        best_dict = run_pipeline(path, features, ['largest'], models, seeds=seeds, init_train_method='kmeans', use_shorter_aug=True) 
+        
+        augmentation_accuracy_dict = {}
+        augmentation_accuracy_dict['random'] = random_dict[features[0]][models[0]]['random']
+        augmentation_accuracy_dict['largest'] = best_dict[features[0]][models[0]]['largest']
+        
+        plot_models_results(augmentation_accuracy_dict, init_train_method='', feature=features[0], model=models[0])
