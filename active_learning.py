@@ -175,6 +175,40 @@ class ActiveLearningPipeline:
         self.available_pool_indices = np.setdiff1d(self.available_pool_indices, selected_indices)
         return selected_indices
     
+    def _sentiment_sampling(self):
+        """
+        selects a subset of indices from the available pool based on sentiment certainty, 
+        choosing the samples with the lowest certainty scores.
+        """
+        n_select = min(self.budget_per_iter, len(self.available_pool_indices))
+        df_pool = self.df.loc[self.available_pool_indices]
+        lowest_sentiment_indices = df_pool.nsmallest(n_select, 'sentiment_certainty').index
+        selected_indices = np.intersect1d(self.available_pool_indices, lowest_sentiment_indices)
+        self.available_pool_indices = np.setdiff1d(self.available_pool_indices, selected_indices)
+        return selected_indices
+    
+    def _largest_sampling(self):
+        """
+        selects a subset of indices from the available pool by choosing samples with the largest number of words
+        """
+        n_select = min(self.budget_per_iter, len(self.available_pool_indices))
+        df_pool = self.df.loc[self.available_pool_indices]
+        max_length_indices = df_pool.nlargest(n_select, 'num_of_words').index
+        selected_indices = np.intersect1d(self.available_pool_indices, max_length_indices)
+        self.available_pool_indices = np.setdiff1d(self.available_pool_indices, selected_indices)
+        return selected_indices
+    
+    def _shortest_sampling(self):
+        """
+        selects a subset of indices from the available pool by choosing samples with the smallest number of words
+        """
+        n_select = min(self.budget_per_iter, len(self.available_pool_indices))
+        df_pool = self.df.loc[self.available_pool_indices]
+        min_length_indices = df_pool.nsmallest(n_select, 'num_of_words').index
+        selected_indices = np.intersect1d(self.available_pool_indices, min_length_indices)
+        self.available_pool_indices = np.setdiff1d(self.available_pool_indices, selected_indices)
+        return selected_indices
+    
     
     def query_by_committee(self):
         """
