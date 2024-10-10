@@ -209,6 +209,48 @@ class ActiveLearningPipeline:
         self.available_pool_indices = np.setdiff1d(self.available_pool_indices, selected_indices)
         return selected_indices
     
+    def _clustering_uncertainty(self, k_means_n_clusters=5):
+        """
+        selects a subset of indices from the available pool based on uncertainty sampling within clusters, using k-means clustering. 
+        it computes the average uncertainty for each cluster and then samples indices from clusters proportionally to their uncertainty.
+        """
+        n_select = min(self.budget_per_iter, len(self.available_pool_indices))
+        available_pool_features = self.feature_vectors[self.available_pool_indices]
+        kmeans = KMeans(n_clusters=k_means_n_clusters, random_state=self.seed)
+        kmeans.fit(available_pool_features)
+        
+        # calculate uncertainty (entropy) for each cluster
+        clusters_uncertainty_list = []
+        for i in range(kmeans.n_clusters):
+            cluster_indices = np.where(kmeans.labels_ == i)[0]
+            cluster_points = available_pool_features[cluster_indices]
+            
+            probabilities = self.model.predict_proba(cluster_points)
+            uncertainties = entropy(probabilities.T)
+            clusters_uncertainty_list.append(np.mean(uncertainties))
+            
+        clusters_uncertainty_prob = np.array(clusters_uncertainty_list)
+        clusters_uncertainty_prob /= sum(clusters_uncertainty_prob)
+        
+        # randomly sample points from clusters, with probability proportional to cluster uncertainty
+        selected_indices_list = []
+        n_selected = 0
+        while n_selected < n_select:
+            index = np.random.choice(len(clusters_uncertainty_prob), p=clusters_uncertainty_prob)
+            cluster_indices = np.where(kmeans.labels_ == index)[0]
+            cluster_indices = self.available_pool_indices[cluster_indices]
+            select_from = set(cluster_indices) - set(selected_indices_list)
+            if len(select_from) == 0:
+                continue
+            selected_index = random.choice(list(select_from))
+            selected_indices_list.append(selected_index)
+            n_selected += 1
+            
+        selected_indices = np.intersect1d(self.available_pool_indices, selected_indices_list)
+        self.available_pool_indices = np.setdiff1d(self.available_pool_indices, selected_indices)
+        
+        return selected_indices
+    
     
     def query_by_committee(self):
         """
