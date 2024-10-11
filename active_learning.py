@@ -252,6 +252,66 @@ class ActiveLearningPipeline:
         return selected_indices
     
     
+    def _clustering_disagreement(self, k_means_n_clusters=5):
+        """
+        applies k-means clustering to the feature vectors, calculates the label distribution 
+        for each cluster, and selects samples from clusters with high disagreement in their labels.
+        """
+        n_select = min(self.budget_per_iter, len(self.available_pool_indices))
+        available_pool_features = self.feature_vectors[self.available_pool_indices]
+        # perform k-means clustering on available pool features
+        kmeans = KMeans(n_clusters=k_means_n_clusters, random_state=self.seed)
+        kmeans.fit(available_pool_features)
+        
+        # predict cluster labels for training features
+        centroids = kmeans.cluster_centers_
+        train_features = self.feature_vectors[self.train_indices]
+        cluster_labels = kmeans.predict(train_features)
+        
+        # populate the label distributions for each cluster based on training data
+        label_distributions = {i: Counter() for i in range(k_means_n_clusters)}
+        for cluster_id in range(k_means_n_clusters):
+            indices_in_cluster = np.where(cluster_labels == cluster_id)[0]
+            indices_in_cluster = self.train_indices[indices_in_cluster]
+            labels_in_cluster = self.labels[indices_in_cluster]
+            label_distributions[cluster_id] = Counter(labels_in_cluster)
+            
+        # calculate entropy for the label distributions in each cluster
+        entropies_list = []
+        
+        for cluster_id, counter in label_distributions.items():
+            total_count = sum(counter.values())
+            if total_count > 0:
+                prob_vector = np.array([count / total_count for count in counter.values()])
+                entropy = -np.sum(prob_vector * np.log(prob_vector + 1e-10))
+                entropies_list.append(entropy)
+            else:
+                entropies_list.append(0)
+        
+        entropies_list = [max(0, x) for x in entropies_list]
+        clusters_uncertainty_prob = np.array(entropies_list)
+        clusters_uncertainty_prob /= sum(clusters_uncertainty_prob)
+        
+        # select clusters with the highest entropy (most disagreement) and randomly sample indices from it
+        selected_indices_list = []
+        n_selected = 0
+        while n_selected < n_select:
+            index = np.random.choice(len(clusters_uncertainty_prob), p=clusters_uncertainty_prob)
+            cluster_indices = np.where(kmeans.labels_ == index)[0]
+            cluster_indices = self.available_pool_indices[cluster_indices]
+            select_from = set(cluster_indices) - set(selected_indices_list)
+            if len(select_from) == 0:
+                continue
+            selected_index = random.choice(list(select_from))
+            selected_indices_list.append(selected_index)
+            n_selected += 1
+            
+        selected_indices = np.intersect1d(self.available_pool_indices, selected_indices_list)
+        self.available_pool_indices = np.setdiff1d(self.available_pool_indices, selected_indices)
+        
+        return selected_indices
+    
+    
     def query_by_committee(self):
         """
         employs multiple models (Logistic Regression, SVM, and Random Forest) to predict labels for samples in the available pool. 
