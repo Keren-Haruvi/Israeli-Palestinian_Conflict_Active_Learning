@@ -312,6 +312,85 @@ class ActiveLearningPipeline:
         return selected_indices
     
     
+    def _unbalanced_sampling(self):
+        """
+        identifies the underrepresented class in the training labels and selects samples 
+        from the available pool that are closest to the mean feature vector of that class
+        """
+        n_select = min(self.budget_per_iter, len(self.available_pool_indices))
+        train_labels = self.labels[self.train_indices]
+        train_features = self.feature_vectors[self.train_indices]
+        count_zero = int(np.sum(train_labels == 0))
+        count_one = int(np.sum(train_labels == 1))
+
+        # determine the mean feature vector of the underrepresented class
+        if count_zero <= count_one:
+            features = train_features[train_labels == 0].mean(axis=0)    
+        else: 
+            features = train_features[train_labels == 1].mean(axis=0)
+        
+        # calculate the distances from the available pool features to the mean features of the underrepresented class
+        distances = np.linalg.norm(self.feature_vectors[self.available_pool_indices] - features, axis=1)
+        selected_indices_list = np.argsort(distances)[:n_select]
+            
+        selected_indices = np.intersect1d(self.available_pool_indices, selected_indices_list)
+        self.available_pool_indices = np.setdiff1d(self.available_pool_indices, selected_indices)
+        
+        return selected_indices_list 
+    
+    
+    def _get_closest_index(self, mistake_index, selected_indices_list):
+        """
+        finds the closest index in the available pool that is not already selected
+        """
+        mistake_feature = self.feature_vectors[mistake_index]
+        available_pool_features = self.feature_vectors[self.available_pool_indices]
+        distances = np.linalg.norm(available_pool_features - mistake_feature, axis=1)
+        sorted_indices_in_pool = np.argsort(distances)
+        # iterate through sorted distances to find the closest unselected index
+        for idx_in_pool in sorted_indices_in_pool:
+            closest_index = self.available_pool_indices[idx_in_pool]
+            if closest_index not in selected_indices_list:
+                return closest_index
+        # if all indices are already selected (unlikely), return None or handle the case appropriately
+        return None
+    
+    def _mistake_sampling(self):
+        """
+        identifies samples in the training set where the model made incorrect predictions
+        and selects the closest indices from the available pool for further labeling. 
+        if the model has perfect accuracy, random sampling is performed instead.
+        """
+        n_select = min(self.budget_per_iter, len(self.available_pool_indices))
+        train_labels = self.labels[self.train_indices]
+        train_features = self.feature_vectors[self.train_indices]
+        # calculate the accuracy of the model on the training set
+        train_predictions = self.model.predict(train_features)
+        accuracy = accuracy_score(train_labels, train_predictions)
+        
+        # if the model has perfect accuracy, fall back to random sampling
+        if accuracy == 1:
+            return self._random_sampling()
+
+        incorrect_indices = np.where(train_labels != train_predictions)[0]
+        incorrect_train_indices = self.train_indices[incorrect_indices]
+        
+        # select indices based on mistakes until the required number of selections is reached
+        selected_indices_list = []
+        n_selected = 0
+        while n_selected < n_select:
+            mistake_index = np.random.choice(incorrect_train_indices)
+            closest_index = self._get_closest_index(mistake_index, selected_indices_list)
+
+            if closest_index is not None:
+                selected_indices_list.append(closest_index)
+                n_selected += 1
+                
+        selected_indices = np.intersect1d(self.available_pool_indices, selected_indices_list)
+        self.available_pool_indices = np.setdiff1d(self.available_pool_indices, selected_indices)
+        return selected_indices
+    
+    
     def query_by_committee(self):
         """
         employs multiple models (Logistic Regression, SVM, and Random Forest) to predict labels for samples in the available pool. 
