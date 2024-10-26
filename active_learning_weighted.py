@@ -106,6 +106,19 @@ class ActiveLearningPipeline:
             method_dict = {self._random_sampling: 1}
         elif self.selection_criterion == 'uniform':
             method_dict = self._create_weighed_dict()
+        elif self.selection_criterion == 'adapted':
+            method_dict = method_weights_dict = {
+                self._uncertainty_sampling: 0.1,
+                self._diversity_sampling: 0,
+                self._sentiment_sampling: 0,
+                self._longest_sampling: 0,
+                self._shortest_sampling: 0.1,
+                self._clustering_uncertainty: 0.4,
+                self._clustering_disagreement: 0,
+                self._unbalanced_sampling: 0.4,
+                self._mistake_sampling: 0,
+                self._query_by_committee: 0
+            }
         else:
             raise ValueError("Invalid selection cretarion")
         return method_dict
@@ -444,6 +457,15 @@ class ActiveLearningPipeline:
             additional_samples_needed = n_select - len(all_selected_samples)
             extra_samples = self._random_sampling(additional_samples_needed)
             all_selected_samples.extend(extra_samples)
+        
+        if self.selection_criterion == 'adapted':
+            # increase weights for specific sampling methods
+            self.method_dict[self._longest_sampling] += 0.2
+            self.method_dict[self._mistake_sampling] += 0.2
+            self.method_dict[self._clustering_disagreement] += 0.2
+            
+            total_sum = sum(self.method_dict.values())
+            self.method_dict = {method: weight / total_sum for method, weight in self.method_dict.items()}
 
         return all_selected_samples
 
@@ -636,10 +658,10 @@ if __name__ == "__main__":
     plot_comparison = False
     if plot_comparison:
         random_dict = run_pipeline(path, features, ['random'], models, seeds=seeds, init_train_method='random') 
-        best_dict = run_pipeline(path, features, ['uniform'], models, seeds=seeds, init_train_method='kmeans', use_shorter_aug=True) 
+        best_dict = run_pipeline(path, features, ['adapted'], models, seeds=seeds, init_train_method='kmeans', use_shorter_aug=True) 
         
         augmentation_accuracy_dict = {}
         augmentation_accuracy_dict['random'] = random_dict[features[0]][models[0]]['random']
-        augmentation_accuracy_dict['best'] = best_dict[features[0]][models[0]]['uniform']
+        augmentation_accuracy_dict['best'] = best_dict[features[0]][models[0]]['adapted']
         
         plot_models_results(augmentation_accuracy_dict, init_train_method='', feature=features[0], model=models[0])
