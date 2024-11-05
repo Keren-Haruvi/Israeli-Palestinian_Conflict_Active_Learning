@@ -1,3 +1,4 @@
+import os
 import ast
 import time
 import openai
@@ -5,7 +6,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from Preprocess.pre_process import get_deberta_embedding
+from pre_process import get_deberta_embedding
 
 openai.api_key = "your_api_key"
 
@@ -86,6 +87,9 @@ def generate_GPT_arguments(df):
 
 
 if __name__ == "__main__":
-    df = pd.read_csv('/home/student/Project/Datasets/processed_df.csv')
+    current_directory = os.getcwd()
+    relative_path = os.path.join(current_directory, 'Datasets', 'processed_df.csv')
+    
+    df = pd.read_csv(relative_path)
     df = generate_GPT_arguments(df)
-    df.to_csv('/home/student/Project/Datasets/processed_df.csv', index=False)
+    df.to_csv(relative_path, index=False)

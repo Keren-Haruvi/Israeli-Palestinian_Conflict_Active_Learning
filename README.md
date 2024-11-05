@@ -13,7 +13,7 @@ Additionally, the project will introduce NLP-specific active learning metrics, w
 
 Make sure you have the following installed on your system:
 
-- Python 3.6 or later
+- Python 3.11.9 or later
 - pip (Python package installer)
 
 ## Installation
@@ -26,8 +26,8 @@ Make sure you have the following installed on your system:
 
 2. Create a virtual environment (optional but recommended):
     ```bash
-    python -m venv venv
-    source venv/bin/activate  # On Windows use `venv\\Scripts\\activate`
+    conda create --name project_env python=3.11.9
+    conda activate project_env
     ```
 
 3. Install the required packages using the `requirements.txt` file:

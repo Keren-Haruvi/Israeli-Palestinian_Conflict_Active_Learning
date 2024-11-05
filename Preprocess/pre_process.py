@@ -1,3 +1,4 @@
+import os
 import ast
 import torch
 import numpy as np
@@ -107,24 +108,28 @@ def sentiment_analysis_certainty(df, text_col):
     return df
 
 
-def create_process_DataFrame(test_size=50):
+def create_process_DataFrame(path, test_size=50):
     # df contains records extracted from podcast transcriptions
-    df1 = pd.read_csv('/home/student/Project/Datasets/nlp_df.csv')
-
+    nlp_df_path = os.path.join(path, 'nlp_df.csv')
+    df1 = pd.read_csv(nlp_df_path)
+    
     df1['label'] = df1['label'].apply(ast.literal_eval)
     df1 = df1[df1['label'].apply((lambda x: (x[0] == 1 or x[1] == 1) and not (x[0] == 1 and x[1] == 1)))]
     df1['y'] = df1['label'].apply(lambda x: 1 if x[0]==1 else 0)
     df1 = df1[['text', 'y']]
 
     # df contains records extracted from reddit
-    df2 = pd.read_csv('/home/student/Project/Datasets/reddit_df.csv')
+    reddit_df_path = os.path.join(path, 'reddit_df.csv')
+    df2 = pd.read_csv(reddit_df_path)
+    
     df2 = df2[df2['label'] != 'not relevant']
     df2['y'] = df2['label'].apply(lambda x: 1 if x=='israel' else 0)
     df2['text'] = df2['comment']
     df2 = df2[['text', 'y']]
 
     # df contains records generated using CoT and GPT
-    df3 = pd.read_csv('/home/student/Project/Datasets/GPT_df.csv')
+    gpt_df_path = os.path.join(path, 'GPT_df.csv')
+    df3 = pd.read_csv(gpt_df_path)
 
     df = pd.concat([df1, df2, df3], axis=0).reset_index(drop=True)
 
@@ -168,5 +173,10 @@ def create_data_analysis(df):
 
 
 if __name__ == "__main__":
-    df = create_process_DataFrame()
-    df.to_csv('/home/student/Project/Datasets/processed_df.csv', index=False)
+    current_directory = os.getcwd()
+    datasets_path = os.path.join(current_directory, 'Datasets')
+    df = create_process_DataFrame(datasets_path)
+    
+    relative_path = os.path.join(current_directory, 'Datasets', 'processed_df.csv')
+    df.to_csv(relative_path, index=False)
+    # df.to_csv('/home/student/Project/Datasets/processed_df.csv', index=False)
