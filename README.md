@@ -9,6 +9,17 @@ Our project aims to develop an active learning-based classifier to efficiently l
 The classifier can help identify platforms or users with a high concentration of anti-Israeli sentiment and highlight the most common anti-Israel arguments, enabling more targeted efforts to present the Israeli perspective. 
 Additionally, the project will introduce NLP-specific active learning metrics, with potential applications in other sentiment analysis tasks.
 
+## Team Collaboration and Responsibilities
+The virtual machine was connected to Omri's Git account, which is why all commits appear under his name. Throughout the project, we collaborated closely over Zoom, with each team member focusing on specific responsibilities:
+
+- Oren handled dataset collection.
+- Omri managed data preprocessing, including augmentation, embeddings, and the initial selection of the training set.
+- Keren implemented the active learning pipelines and wrote the report.
+- Or implemented the four final models.
+
+Overall, the active learning strategies were developed collaboratively. We all 
+contributed to each aspect, discussed everything collectively, and made decisions as a team.
+
 ## Prerequisites
 
 Make sure you have the following installed on your system:
